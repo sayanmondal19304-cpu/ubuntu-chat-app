@@ -1,12 +1,3 @@
-// chatlog_tool.cpp - command line tool to talk to the /dev/chatlog driver
-//
-// Usage: chatlog_tool [-d /dev/chatlog] <command> [text]
-//   dump        print everything currently stored, then exit
-//   follow      print history, then keep waiting for new lines (like tail -f)
-//   write TEXT  append a line
-//   stats       show buffer statistics (ioctl)
-//   clear       empty the log (ioctl)
-
 #include <fcntl.h>
 #include <poll.h>
 #include <sys/ioctl.h>
@@ -56,13 +47,13 @@ int main(int argc, char* argv[]) {
     } else if (cmd == "dump" || cmd == "follow") {
         char buf[4096];
         for (;;) {
-            ssize_t n = ::read(fd, buf, sizeof(buf));   // follow: blocks in the driver
+            ssize_t n = ::read(fd, buf, sizeof(buf));   
             if (n > 0) {
                 if (::write(STDOUT_FILENO, buf, static_cast<size_t>(n)) < 0) break;
                 continue;
             }
             if (n < 0 && errno == EINTR) continue;
-            break;                                       // dump: EAGAIN = end of history
+            break;                                       
         }
     } else {
         usage(argv[0]);
