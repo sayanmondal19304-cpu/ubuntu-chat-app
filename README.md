@@ -1,4 +1,4 @@
-# Ubuntu Chat Application
+# Ubuntu Chat Application using c++ and linux socket
 
 A multi-client, terminal-based chat application written in modern C++17 using
 raw POSIX/Linux TCP sockets. No external libraries.
