@@ -1,7 +1,3 @@
-// client.cpp - chat client using poll() to watch keyboard AND socket
-//
-// Usage: ./bin/client [host] [port]     (defaults: 127.0.0.1 8080)
-
 #include <netdb.h>
 #include <poll.h>
 #include <sys/socket.h>
@@ -15,8 +11,8 @@
 
 static int connect_to(const char* host, const char* port) {
     addrinfo hints{}, *res = nullptr;
-    hints.ai_family = AF_UNSPEC;      // IPv4 or IPv6
-    hints.ai_socktype = SOCK_STREAM;  // TCP
+    hints.ai_family = AF_UNSPEC;      
+    hints.ai_socktype = SOCK_STREAM;  
 
     int rc = getaddrinfo(host, port, &hints, &res);
     if (rc != 0) {
@@ -69,7 +65,7 @@ int main(int argc, char* argv[]) {
         // Keyboard input
         if (fds[0].revents & (POLLIN | POLLHUP)) {
             std::string input;
-            if (!std::getline(std::cin, input)) {  // Ctrl+D
+            if (!std::getline(std::cin, input)) {  
                 send_all(sock, "/quit\n");
                 break;
             }
@@ -78,7 +74,7 @@ int main(int argc, char* argv[]) {
                 break;
             }
             if (input == "/quit") {
-                // give the server's goodbye a moment to arrive, then exit
+               
                 if (reader.fill() > 0) {
                     std::string line;
                     while (reader.pop_line(line)) std::cout << line << std::endl;
