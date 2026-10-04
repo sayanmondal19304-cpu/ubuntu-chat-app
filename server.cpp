@@ -1,10 +1,3 @@
-// server.cpp - multi-client TCP chat server (thread per client)
-//
-// Usage: ./bin/server [port] [--chatlog /dev/chatlog]
-//
-// Flow: socket() -> setsockopt() -> bind() -> listen() -> accept() loop.
-// Every accepted connection gets its own std::thread.
-
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <netinet/in.h>
@@ -25,13 +18,12 @@
 
 #include "common.hpp"
 
-static std::mutex g_mutex;                    // protects g_clients
-static std::map<std::string, int> g_clients;  // username -> socket fd
+static std::mutex g_mutex;                    
+static std::map<std::string, int> g_clients;  
 static std::atomic<bool> g_running{true};
-static std::atomic<int> g_active{0};          // live client threads
-static int g_logfd = -1;                      // /dev/chatlog (optional)
+static std::atomic<int> g_active{0};         
+static int g_logfd = -1;                    
 
-// Append a line to the kernel driver's ring buffer, if it is enabled.
 static void klog(const std::string& line) {
     if (g_logfd < 0) return;
     std::string out = line + "\n";
@@ -44,9 +36,8 @@ static void log(const std::string& msg) {
     std::cout << "[" << timestamp() << "] " << msg << std::endl;
 }
 
-static void on_signal(int) { g_running = false; }  // accept() gets EINTR
+static void on_signal(int) { g_running = false; }  
 
-// Send to everybody (optionally skipping one fd).
 static void broadcast(const std::string& msg, int skip_fd = -1) {
     std::lock_guard<std::mutex> lk(g_mutex);
     for (auto& [name, fd] : g_clients)
@@ -90,7 +81,6 @@ static void handle_client(int fd, std::string ip) {
     LineReader reader(fd);
     std::string line, name;
 
-    // ---- 1. choose a username ----
     send_all(fd, "Welcome! Enter a username (letters, digits, _; max 16):\n");
     while (name.empty()) {
         if (!reader.read_line(line)) {
@@ -117,7 +107,6 @@ static void handle_client(int fd, std::string ip) {
     broadcast("* " + name + " joined the chat", fd);
     klog("[" + timestamp() + "] * " + name + " joined");
 
-    // ---- 2. main message loop ----
     while (reader.read_line(line)) {
         line = trim(line);
         if (line.empty()) continue;
@@ -156,7 +145,6 @@ static void handle_client(int fd, std::string ip) {
         }
     }
 
-    // ---- 3. cleanup ----
     {
         std::lock_guard<std::mutex> lk(g_mutex);
         g_clients.erase(name);
@@ -185,7 +173,6 @@ int main(int argc, char* argv[]) {
         else std::cout << "Logging chat to kernel device " << logdev << std::endl;
     }
 
-    // Ctrl+C -> graceful shutdown. No SA_RESTART so accept() is interrupted.
     struct sigaction sa{};
     sa.sa_handler = on_signal;
     sigemptyset(&sa.sa_mask);
@@ -195,12 +182,12 @@ int main(int argc, char* argv[]) {
     int listen_fd = ::socket(AF_INET, SOCK_STREAM, 0);
     if (listen_fd < 0) { perror("socket"); return 1; }
 
-    int yes = 1;  // allow quick restart of the server on the same port
+    int yes = 1;  
     setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);  // all interfaces
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);  
     addr.sin_port = htons(static_cast<uint16_t>(port));
 
     if (::bind(listen_fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
@@ -228,13 +215,12 @@ int main(int argc, char* argv[]) {
         std::thread(handle_client, fd, who).detach();
     }
 
-    // ---- graceful shutdown ----
     log("Shutting down...");
     {
         std::lock_guard<std::mutex> lk(g_mutex);
         for (auto& [name, fd] : g_clients) {
             send_all(fd, "* Server is shutting down\n");
-            ::shutdown(fd, SHUT_RDWR);  // wakes each thread's recv()
+            ::shutdown(fd, SHUT_RDWR); 
         }
     }
     for (int i = 0; i < 40 && g_active > 0; ++i)
