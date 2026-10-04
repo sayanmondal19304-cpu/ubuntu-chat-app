@@ -1,17 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
-/*
- * chatlog - a character device driver that keeps the chat history in a
- *           kernel ring buffer.
- *
- *   /dev/chatlog
- *     write()  : append a chat line (oldest data is overwritten when full)
- *     read()   : read history; blocks until new data (like `tail -f`)
- *     poll()   : select/poll/epoll support
- *     ioctl()  : CHATLOG_IOC_CLEAR, CHATLOG_IOC_STATS
- *
- * Every open() gets its own read position, so many programs can read the
- * log at the same time without stealing data from each other.
- */
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -35,38 +21,33 @@ static unsigned int buf_size = 65536;
 module_param(buf_size, uint, 0444);
 MODULE_PARM_DESC(buf_size, "Ring buffer size in bytes (4096..1048576, default 65536)");
 
-/*
- * The buffer is a ring, but positions are kept as ever-growing 64-bit
- * "logical" offsets. Logical offset p lives at buf[p % size]. This makes it
- * trivial for each reader to detect that it was lapped (pos < oldest).
- */
 struct chatlog_dev {
 	struct cdev cdev;
 	struct class *class;
 	struct device *device;
 	dev_t devno;
 
-	struct mutex lock;           /* protects everything below */
-	wait_queue_head_t wq;        /* readers sleep here        */
+	struct mutex lock;         
+	wait_queue_head_t wq;       
 	char *buf;
 	u32 size;
-	u64 total;                   /* logical end of the stream */
-	u64 start;                   /* set by CLEAR              */
+	u64 total;            
+	u64 start;                
 	u64 messages;
 };
 
 struct chatlog_reader {
-	u64 pos;                     /* this open file's logical read offset */
+	u64 pos;                     
 };
 
 static struct chatlog_dev chatlog;
 
 static inline u32 ring_off(u64 pos, u32 size)
 {
-	return do_div(pos, size);    /* do_div: safe 64-bit modulo on 32-bit CPUs */
+	return do_div(pos, size);    
 }
 
-/* Oldest logical offset that is still valid. Call with lock held. */
+
 static u64 oldest_pos(struct chatlog_dev *d)
 {
 	u64 lapped = d->total > d->size ? d->total - d->size : 0;
@@ -84,7 +65,7 @@ static int chatlog_open(struct inode *inode, struct file *filp)
 		return -ENOMEM;
 
 	mutex_lock(&d->lock);
-	r->pos = oldest_pos(d);      /* new readers see the full history */
+	r->pos = oldest_pos(d);   
 	mutex_unlock(&d->lock);
 
 	filp->private_data = r;
@@ -113,17 +94,17 @@ static ssize_t chatlog_read(struct file *filp, char __user *ubuf,
 		if (mutex_lock_interruptible(&d->lock))
 			return -ERESTARTSYS;
 
-		if (r->pos < oldest_pos(d))      /* we were lapped: skip lost data */
+		if (r->pos < oldest_pos(d))      
 			r->pos = oldest_pos(d);
 		if (r->pos < d->total)
-			break;                   /* data available, keep the lock */
+			break;                  
 
 		mutex_unlock(&d->lock);
 		if (filp->f_flags & O_NONBLOCK)
 			return -EAGAIN;
 		ret = wait_event_interruptible(d->wq, r->pos < READ_ONCE(d->total));
 		if (ret)
-			return ret;              /* -ERESTARTSYS on signal */
+			return ret;             
 	}
 
 	avail = d->total - r->pos;
@@ -174,7 +155,7 @@ static ssize_t chatlog_write(struct file *filp, const char __user *ubuf,
 	d->messages++;
 	mutex_unlock(&d->lock);
 
-	wake_up_interruptible(&d->wq);   /* wake sleeping readers / pollers */
+	wake_up_interruptible(&d->wq); 
 	return done;
 }
 
@@ -182,7 +163,7 @@ static __poll_t chatlog_poll(struct file *filp, poll_table *wait)
 {
 	struct chatlog_dev *d = &chatlog;
 	struct chatlog_reader *r = filp->private_data;
-	__poll_t mask = EPOLLOUT | EPOLLWRNORM;      /* always writable */
+	__poll_t mask = EPOLLOUT | EPOLLWRNORM;     
 
 	poll_wait(filp, &d->wq, wait);
 
@@ -202,7 +183,7 @@ static long chatlog_ioctl(struct file *filp, unsigned int cmd, unsigned long arg
 	switch (cmd) {
 	case CHATLOG_IOC_CLEAR:
 		mutex_lock(&d->lock);
-		d->start = d->total;     /* everything before this is "gone" */
+		d->start = d->total;     
 		d->messages = 0;
 		mutex_unlock(&d->lock);
 		return 0;
@@ -222,7 +203,7 @@ static long chatlog_ioctl(struct file *filp, unsigned int cmd, unsigned long arg
 		return 0;
 	}
 	default:
-		return -ENOTTY;          /* unknown ioctl */
+		return -ENOTTY;       
 	}
 }
 
@@ -254,19 +235,16 @@ static int __init chatlog_init(void)
 	mutex_init(&d->lock);
 	init_waitqueue_head(&d->wq);
 
-	/* 1. ask the kernel for a free major/minor number */
 	ret = alloc_chrdev_region(&d->devno, 0, 1, DEVICE_NAME);
 	if (ret)
 		goto err_buf;
 
-	/* 2. register the file operations for that number */
 	cdev_init(&d->cdev, &chatlog_fops);
 	d->cdev.owner = THIS_MODULE;
 	ret = cdev_add(&d->cdev, d->devno, 1);
 	if (ret)
 		goto err_region;
 
-	/* 3. create /sys/class/chatlog so udev makes /dev/chatlog */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0)
 	d->class = class_create(DEVICE_NAME);
 #else
