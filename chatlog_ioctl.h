@@ -4,7 +4,7 @@
 #include <linux/ioctl.h>
 #include <linux/types.h>
 
-#define CHATLOG_MAX_MSG 4096          /* max bytes accepted per write() */
+#define CHATLOG_MAX_MSG 4096         
 
 struct chatlog_stats {
 	__u64 total_bytes;   
